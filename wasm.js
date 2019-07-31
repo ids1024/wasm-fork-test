@@ -43,7 +43,7 @@ async function main(mem) {
 
     data_addr = instance.exports.__heap_base.value;
 
-    for (;;) {
+    do {
         if (forking) {
             instance.exports.asyncify_start_rewind(data_addr);
         }
@@ -52,13 +52,10 @@ async function main(mem) {
 
         if (forking) {
             instance.exports.asyncify_stop_unwind();
-
             let p = child_process.fork(JS_PATH, ['--forked']);
             p.send(Array.from(view));
-        } else {
-            break;
         }
-    }
+    } while(forking);
 }
 
 if (forking) {
