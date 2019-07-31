@@ -30,7 +30,7 @@ async function main(mem) {
                 forking = false;
             }
         },
-        getpid: function() { return process.pid }
+        getpid: function() { return process.pid; }
     };
 
     let wasm = fs.readFileSync(WASM_PATH);
@@ -63,7 +63,7 @@ async function main(mem) {
 
 if (forking) {
     process.on('message', (m) => {
-        process.disconnect()
+        process.disconnect();
         main(m);
     });
 } else {
