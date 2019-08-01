@@ -14,6 +14,7 @@ let forking = (process.argv[2] === '--forked');
 let instance;
 let data_addr;
 let view;
+let child;
 
 async function main(mem) {
     let env = {
@@ -28,6 +29,11 @@ async function main(mem) {
             } else {
                 instance.exports.asyncify_stop_rewind();
                 forking = false;
+                if (child) {
+                    return child.pid;
+                } else {
+                    return 0;
+                }
             }
         },
         getpid: function() { return process.pid; }
@@ -52,8 +58,8 @@ async function main(mem) {
 
         if (forking) {
             instance.exports.asyncify_stop_unwind();
-            let p = child_process.fork(JS_PATH, ['--forked']);
-            p.send(Array.from(view));
+            child = child_process.fork(JS_PATH, ['--forked']);
+            child.send(Array.from(view));
         }
     } while(forking);
 }

@@ -1,4 +1,4 @@
-void fork();
+int fork();
 void print(int);
 int getpid();
 
