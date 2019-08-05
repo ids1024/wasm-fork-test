@@ -34,7 +34,7 @@ class ForkHandler {
 
             if (this.forking) {
                 this.instance.exports.asyncify_stop_unwind();
-                this.child_pid = create_fork();
+                this.child_pid = create_fork(this.view);
             }
         } while(this.forking);
     }
@@ -69,7 +69,7 @@ async function main(mem) {
 
     fork_handler.call(mem, instance, data_addr, STACK_SIZE, instance.exports.main, view => {
         let child = child_process.fork(JS_PATH, ['--forked']);
-        child.send(Array.from(fork_handler.view));
+        child.send(Array.from(view));
         return child.pid;
     });
 }
