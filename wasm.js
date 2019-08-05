@@ -1,6 +1,7 @@
-// https://kripken.github.io/blog/wasm/2019/07/16/asyncify.html
-
 'use strict';
+
+// https://kripken.github.io/blog/wasm/2019/07/16/asyncify.html
+// TODO return value of fork (-1, 0, pid of parent)
 
 const fs = require('fs');
 const child_process = require('child_process');
@@ -10,62 +11,76 @@ const JS_PATH = 'wasm.js';
 const WASM_PATH = 'test-async.wasm';
 const STACK_SIZE = 1024;
 
-let forking = (process.argv[2] === '--forked');
-let instance;
-let data_addr;
-let view;
-let child_pid = 0;
+
+class ForkHandler {
+    call(mem, instance, data_addr, stack_size, f, create_fork) {
+        this.instance = instance;
+        this.view = new Int32Array(instance.exports.memory.buffer);
+        this.data_addr = data_addr;
+        this.stack_size = stack_size;
+        this.child_pid = 0;
+        this.forking = (mem !== undefined);
+
+        if (mem) {
+            this.view.set(mem);
+        }
+
+        do {
+            if (this.forking) {
+                this.instance.exports.asyncify_start_rewind(data_addr);
+            }
+
+            f();
+
+            if (this.forking) {
+                this.instance.exports.asyncify_stop_unwind();
+                this.child_pid = create_fork();
+            }
+        } while(this.forking);
+    }
+
+    fork() {
+        if (!this.forking) {
+            this.view[this.data_addr / 4] = this.data_addr + 8;
+            this.view[this.data_addr / 4 + 1] = this.data_addr + 8 + this.stack_size;
+
+            this.instance.exports.asyncify_start_unwind(this.data_addr);
+        } else {
+            this.instance.exports.asyncify_stop_rewind();
+        }
+        this.forking = !this.forking;
+        return this.child_pid;
+    }
+}
+
 
 async function main(mem) {
+    let fork_handler = new ForkHandler();
+
     let env = {
         print: console.log,
-        fork: function() {
-            if (!forking) {
-                view[data_addr / 4] = data_addr + 8;
-                view[data_addr / 4 + 1] = data_addr + 8 + STACK_SIZE;
-
-                instance.exports.asyncify_start_unwind(data_addr);
-                forking = true;
-            } else {
-                instance.exports.asyncify_stop_rewind();
-                forking = false;
-            }
-            return child_pid;
-        },
+        fork: fork_handler.fork.bind(fork_handler),
         getpid: function() { return process.pid; }
     };
 
     let wasm = fs.readFileSync(WASM_PATH);
-    instance = (await WebAssembly.instantiate(wasm, {env: env})).instance;
-    view = new Int32Array(instance.exports.memory.buffer);
+    let instance = (await WebAssembly.instantiate(wasm, {env: env})).instance;
+    let data_addr = instance.exports.__heap_base.value;
 
-    if (mem) {
-        view.set(mem);
-    }
-
-    data_addr = instance.exports.__heap_base.value;
-
-    do {
-        if (forking) {
-            instance.exports.asyncify_start_rewind(data_addr);
-        }
-
-        instance.exports.main();
-
-        if (forking) {
-            instance.exports.asyncify_stop_unwind();
-            let child = child_process.fork(JS_PATH, ['--forked']);
-            child.send(Array.from(view));
-            child_pid = child.pid;
-        }
-    } while(forking);
+    fork_handler.call(mem, instance, data_addr, STACK_SIZE, instance.exports.main, view => {
+        let child = child_process.fork(JS_PATH, ['--forked']);
+        child.send(Array.from(fork_handler.view));
+        return child.pid;
+    });
 }
 
-if (forking) {
-    process.on('message', (m) => {
+
+if (process.argv[2] === '--forked') {
+    process.on('message', (mem) => {
         process.disconnect();
-        main(m);
+        main(mem);
     });
+
 } else {
     main();
 }
