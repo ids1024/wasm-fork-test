@@ -21,10 +21,12 @@ class ForkHandler {
 
         let view = new Int32Array(instance.exports.memory.buffer);
 
+        // If we are a new process created in a fork, load memory
         if (mem) {
             view.set(mem);
         }
 
+        // Configure the structure asyncify uses to save stack
         view[data_addr / 4] = data_addr + 8;
         view[data_addr / 4 + 1] = data_addr + 8 + stack_size;
 
